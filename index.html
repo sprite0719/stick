@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>便利貼智慧看板 - Sticky Note Board</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Inter & Noto Sans TC -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'Inter', 'sans-serif'],
+                        hand: ['Kalam', 'cursive', '"Noto Sans TC"'],
+                    },
+                    colors: {
+                        sticky: {
+                            yellow: '#fef08a',
+                            yellowDark: '#facc15',
+                            green: '#bbf7d0',
+                            greenDark: '#4ade80',
+                            blue: '#bae6fd',
+                            blueDark: '#38bdf8',
+                            pink: '#fbcfe8',
+                            pinkDark: '#f472b6',
+                            purple: '#e9d5ff',
+                            purpleDark: '#c084fc',
+                            orange: '#fed7aa',
+                            orangeDark: '#fb923c',
+                            dark: '#334155',
+                            darkText: '#f8fafc'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* 看板點陣背景 */
+        .board-pattern-dots {
+            background-image: radial-gradient(rgba(255, 255, 255, 0.15) 1.5px, transparent 1.5px);
+            background-size: 24px 24px;
+        }
+        .board-pattern-grid {
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        /* 擬真圖釘與膠帶效果 */
+        .tape-effect {
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%) rotate(-1deg);
+            width: 90px;
+            height: 26px;
+            background-color: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(2px);
+            border-left: 2px dashed rgba(0, 0, 0, 0.1);
+            border-right: 2px dashed rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+            z-index: 10;
+        }
+
+        /* 便利貼陰影與過渡 */
+        .sticky-card {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.2s ease, opacity 0.2s ease;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
+        }
+        
+        .sticky-card:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+            z-index: 40 !important;
+        }
+
+        /* 旋轉變體樣式 */
+        .tilt-left { transform: rotate(-1.5deg); }
+        .tilt-right { transform: rotate(1.5deg); }
+        .tilt-none { transform: rotate(0deg); }
+
+        .tilt-left:hover, .tilt-right:hover, .tilt-none:hover {
+            transform: rotate(0deg) scale(1.02);
+        }
+
+        /* 自訂滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 9999px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+
+        /* 拖拽中的狀態 */
+        .is-dragging {
+            opacity: 0.85;
+            cursor: grabbing !important;
+            transform: scale(1.05) rotate(0deg) !important;
+            z-index: 100 !important;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        /* 特殊文字區無邊框重置 */
+        .borderless-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col font-sans select-none overflow-hidden bg-slate-950 text-slate-100">
+
+    <!-- 頂部導覽列 Header -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 flex-shrink-0 z-30 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+            
+            <!-- Logo & 標題 -->
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex items-center gap-2.5">
+                    <div class="bg-amber-400 text-slate-900 p-2.5 rounded-xl shadow-md shadow-amber-500/20 flex items-center justify-center">
+                        <i class="fa-solid fa-[#faad14] fa-note-sticky text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-wide bg-gradient-to-r from-amber-200 via-amber-400 to-orange-400 bg-clip-text text-transparent flex items-center gap-2">
+                            StickyFlow <span class="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">便利貼看板</span>
+                        </h1>
+                        <p class="text-xs text-slate-400 hidden sm:block">靈感、待辦與筆記的智慧視覺化空間</p>
+                    </div>
+                </div>
+
+                <!-- 行動端新增按鈕 -->
+                <button onclick="createNewNote()" class="md:hidden bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1.5 shadow-md">
+                    <i class="fa-solid fa-plus"></i> 新增
+                </button>
+            </div>
+
+            <!-- 中央快速操作鍵與計數 -->
+            <div class="flex items-center gap-2 w-full md:w-auto justify-center">
+                <!-- 新增便利貼 -->
+                <button onclick="createNewNote()" class="hidden md:flex bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-sm transition-all shadow-lg shadow-amber-500/10 items-center gap-2 active:scale-95">
+                    <i class="fa-solid fa-plus text-base"></i>
+                    <span>新增便利貼</span>
+                </button>
+
+                <!-- 檢視模式切換 (網格 vs 自由擺放) -->
+                <div class="bg-slate-800 p-1 rounded-xl border border-slate-700/60 flex items-center text-xs">
+                    <button id="viewGridBtn" onclick="setViewMode('grid')" class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-medium text-slate-300">
+                        <i class="fa-solid fa-grip"></i>
+                        <span class="hidden sm:inline">網格</span>
+                    </button>
+                    <button id="viewFreeBtn" onclick="setViewMode('free')" class="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-medium text-slate-300">
+                        <i class="fa-solid fa-up-down-left-right"></i>
+                        <span class="hidden sm:inline">自由拖拽</span>
+                    </button>
+                </div>
+
+                <!-- 數量統計 -->
+                <div class="text-xs bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-700/50 text-slate-400 flex items-center gap-2">
+                    <span>共 <strong id="totalNotesCount" class="text-amber-400">0</strong> 則</span>
+                </div>
+            </div>
+
+            <!-- 右側功能按鈕 (備份/重置) -->
+            <div class="flex items-center gap-2">
+                <button onclick="exportData()" title="匯出 JSON 備份" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-all">
+                    <i class="fa-solid fa-download"></i>
+                </button>
+                <button onclick="triggerImport()" title="匯入 JSON 備份" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-all">
+                    <i class="fa-solid fa-upload"></i>
+                </button>
+                <input type="file" id="importInput" accept=".json" class="hidden" onchange="importData(event)">
+
+                <button onclick="confirmClearAll()" title="清空全部便利貼" class="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/50 hover:text-rose-400 text-slate-400 border border-slate-700 text-xs transition-all">
+                    <i class="fa-solid fa-trash-can"></i>
+                </button>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- 控制與篩選工具列 Sub-Toolbar -->
+    <section class="bg-slate-900 border-b border-slate-800/80 px-4 py-2.5 z-20 shadow-sm flex-shrink-0">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+            
+            <!-- 搜尋框 -->
+            <div class="relative flex-1 min-w-[200px] max-w-md">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="searchInput" oninput="handleSearch()" placeholder="搜尋標題、內容或標籤..." 
+                    class="w-full pl-9 pr-8 py-1.5 bg-slate-800/90 border border-slate-700/80 rounded-xl text-slate-200 placeholder-slate-400 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-all">
+                <button id="clearSearchBtn" onclick="clearSearch()" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200">
+                    <i class="fa-solid fa-circle-xmark"></i>
+                </button>
+            </div>
+
+            <!-- 分類標籤篩選 -->
+            <div class="flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar" id="tagFilters">
+                <!-- 由 JS 動態繪製標籤選擇鈕 -->
+            </div>
+
+            <!-- 顏色過濾與排序 -->
+            <div class="flex items-center gap-3">
+                <!-- 顏色過濾器 -->
+                <div class="flex items-center gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700/60" id="colorFilters">
+                    <!-- JS 動態產生顏色圓點 -->
+                </div>
+
+                <!-- 排序選擇器 -->
+                <select id="sortSelect" onchange="handleSortChange()" class="bg-slate-800 border border-slate-700 rounded-xl px-2.5 py-1.5 text-slate-300 focus:outline-none focus:border-amber-400">
+                    <option value="newest">最新的在前</option>
+                    <option value="oldest">最舊的在前</option>
+                    <option value="title">按標題排序</option>
+                </select>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- 主要工作畫布區 Board Workspace -->
+    <main id="boardWorkspace" class="flex-1 relative overflow-auto board-pattern-dots p-4 sm:p-6 transition-all min-h-0">
+        
+        <!-- 空狀態無便利貼提示 -->
+        <div id="emptyState" class="hidden absolute inset-0 flex flex-col items-center justify-center text-center p-6 pointer-events-none">
+            <div class="w-20 h-20 bg-slate-800/80 rounded-3xl flex items-center justify-center text-slate-500 mb-4 border border-slate-700/50 shadow-xl">
+                <i class="fa-solid fa-note-sticky text-4xl text-amber-400/50"></i>
+            </div>
+            <h3 class="text-lg font-bold text-slate-300 mb-1">尚無便利貼內容</h3>
+            <p class="text-xs text-slate-500 max-w-xs mb-4">點擊上方「新增便利貼」按鈕，開始記錄您的點子與任務吧！</p>
+            <button onclick="createNewNote()" class="pointer-events-auto bg-amber-400 hover:bg-amber-300 text-slate-950 font-semibold px-4 py-2 rounded-xl text-xs transition-all shadow-lg flex items-center gap-2">
+                <i class="fa-solid fa-plus"></i> 立即新增
+            </button>
+        </div>
+
+        <!-- 便利貼容器 (支援網格 Layout 與 自由定位 Canvas) -->
+        <div id="notesContainer" class="w-full min-h-full">
+            <!-- 便利貼由 JavaScript 動態渲染至此 -->
+        </div>
+
+    </main>
+
+    <!-- 客製化確認對話框 Modal -->
+    <div id="confirmModal" class="hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl transform transition-all scale-100">
+            <div class="w-12 h-12 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-2xl flex items-center justify-center mb-4 text-xl">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 id="modalTitle" class="text-base font-bold text-slate-100 mb-2">確定執行此操作？</h3>
+            <p id="modalMessage" class="text-xs text-slate-400 mb-6 leading-relaxed">這個動作無法復原。</p>
+            <div class="flex items-center justify-end gap-3">
+                <button onclick="closeConfirmModal(false)" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition-all">取消</button>
+                <button id="modalConfirmBtn" onclick="closeConfirmModal(true)" class="px-4 py-2 rounded-xl text-xs font-medium text-white bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/20 transition-all">確定刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 提示訊息 Notification Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        /**
+         * 便利貼智慧看板核心邏輯
+         * 包含 LocalStorage 運作, 狀態管理, 拖拽互動, 篩選排序
+         */
+
+        // 常數設定
+        const STORAGE_KEY = 'sticky_flow_notes_v1';
+        const VIEW_MODE_KEY = 'sticky_flow_view_mode';
+        
+        // 便利貼色彩對應表
+        const COLOR_PALETTE = {
+            yellow: { bg: 'bg-sticky-yellow', text: 'text-slate-900', border: 'border-yellow-300', header: 'bg-yellow-300/40', accent: '#facc15', label: '溫暖黃' },
+            green: { bg: 'bg-sticky-green', text: 'text-slate-900', border: 'border-emerald-300', header: 'bg-emerald-300/40', accent: '#4ade80', label: '薄荷綠' },
+            blue: { bg: 'bg-sticky-blue', text: 'text-slate-900', border: 'border-sky-300', header: 'bg-sky-300/40', accent: '#38bdf8', label: '天空藍' },
+            pink: { bg: 'bg-sticky-pink', text: 'text-slate-900', border: 'border-pink-300', header: 'bg-pink-300/40', accent: '#f472b6', label: '櫻花粉' },
+            purple: { bg: 'bg-sticky-purple', text: 'text-slate-900', border: 'border-purple-300', header: 'bg-purple-300/40', accent: '#c084fc', label: '薰衣紫' },
+            orange: { bg: 'bg-sticky-orange', text: 'text-slate-900', border: 'border-orange-300', header: 'bg-orange-300/40', accent: '#fb923c', label: '活力橘' },
+            dark: { bg: 'bg-slate-800', text: 'text-slate-100', border: 'border-slate-700', header: 'bg-slate-700/50', accent: '#64748b', label: '極簡灰' }
+        };
+
+        // 預設分類標籤
+        const TAG_OPTIONS = ['工作', '個人', '靈感', '待辦', '重要'];
+
+        // 應用程式狀態 State
+        let notes = [];
+        let viewMode = 'grid'; // 'grid' | 'free'
+        let searchQuery = '';
+        let selectedTag = 'ALL';
+        let selectedColor = 'ALL';
+        let sortOption = 'newest';
+        let activeConfirmCallback = null;
+        let highestZIndex = 10;
+
+        // 初始化載入
+        window.onload = () => {
+            loadViewMode();
+            loadNotesFromStorage();
+            renderTagFilters();
+            renderColorFilters();
+            renderNotes();
+            setupWindowResize();
+        };
+
+        // 儲存至 LocalStorage
+        function saveNotesToStorage() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
+            } catch (e) {
+                console.error('Save to local storage failed:', e);
+                showToast('儲存失敗：空間可能已滿', 'error');
+            }
+        }
+
+        // 從 LocalStorage 載入
+        function loadNotesFromStorage() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) {
+                try {
+                    notes = JSON.parse(data);
+                    // 計算最高 zIndex
+                    notes.forEach(n => {
+                        if (n.zIndex && n.zIndex > highestZIndex) highestZIndex = n.zIndex;
+                    });
+                } catch (e) {
+                    console.error('Failed to parse local storage data', e);
+                    notes = [];
+                }
+            } else {
+                // 初次造訪建立範例資料
+                notes = getSampleNotes();
+                saveNotesToStorage();
+            }
+        }
+
+        function loadViewMode() {
+            const mode = localStorage.getItem(VIEW_MODE_KEY);
+            if (mode === 'grid' || mode === 'free') {
+                viewMode = mode;
+            }
+            updateViewModeUI();
+        }
+
+        // 預設範例資料（已清空）
+        function getSampleNotes() {
+            return [];
+        }
+
+        // 新增便利貼
+        function createNewNote(color = 'yellow') {
+            const tilts = ['tilt-left', 'tilt-right', 'tilt-none'];
+            const randomTilt = tilts[Math.floor(Math.random() * tilts.length)];
+            
+            // 自由拖拽模式下的智慧重疊位置計算
+            const offset = (notes.length % 8) * 25;
+            highestZIndex++;
+
+            const newNote = {
+                id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                title: '',
+                content: '',
+                color: color,
+                tag: '工作',
+                isPinned: false,
+                tilt: randomTilt,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                x: 60 + offset,
+                y: 60 + offset,
+                zIndex: highestZIndex
+            };
+
+            notes.unshift(newNote);
+            saveNotesToStorage();
+            renderNotes();
+            
+            showToast('已新增便利貼', 'success');
+
+            // 自動聚焦新便利貼的標題輸入框
+            setTimeout(() => {
+                const titleEl = document.querySelector(`[data-id="${newNote.id}"] .note-title`);
+                if (titleEl) titleEl.focus();
+            }, 100);
+        }
+
+        // 更新便利貼
+        function updateNote(id, key, value) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note[key] = value;
+                note.updatedAt = new Date().toISOString();
+                saveNotesToStorage();
+            }
+        }
+
+        // 切換置頂
+        function togglePinNote(id) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note.isPinned = !note.isPinned;
+                saveNotesToStorage();
+                renderNotes();
+                showToast(note.isPinned ? '已置頂便利貼' : '已取消置頂', 'info');
+            }
+        }
+
+        // 複製便利貼
+        function duplicateNote(id) {
+            const note = notes.find(n => n.id === id);
+            if (!note) return;
+
+            highestZIndex++;
+            const duplicated = {
+                ...JSON.parse(JSON.stringify(note)),
+                id: 'note_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                title: note.title ? `${note.title} (副本)` : '副本',
+                x: note.x + 30,
+                y: note.y + 30,
+                isPinned: false,
+                zIndex: highestZIndex,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            notes.unshift(duplicated);
+            saveNotesToStorage();
+            renderNotes();
+            showToast('已複製便利貼', 'success');
+        }
+
+        // 變更顏色
+        function changeNoteColor(id, newColor) {
+            const note = notes.find(n => n.id === id);
+            if (note && note.color !== newColor) {
+                note.color = newColor;
+                saveNotesToStorage();
+                renderNotes();
+            }
+        }
+
+        // 變更標籤
+        function changeNoteTag(id, newTag) {
+            const note = notes.find(n => n.id === id);
+            if (note) {
+                note.tag = newTag;
+                saveNotesToStorage();
+                renderNotes();
+            }
+        }
+
+        // 刪除便利貼
+        function deleteNote(id) {
+            openConfirmModal('確定要刪除這張便利貼嗎？', () => {
+                notes = notes.filter(n => n.id !== id);
+                saveNotesToStorage();
+                renderNotes();
+                showToast('便利貼已刪除', 'info');
+            });
+        }
+
+        // 繪製標籤選擇器列
+        function renderTagFilters() {
+            const container = document.getElementById('tagFilters');
+            const tags = ['ALL', ...TAG_OPTIONS];
+            
+            container.innerHTML = tags.map(tag => {
+                const isActive = selectedTag === tag;
+                const label = tag === 'ALL' ? '全部標籤' : `# ${tag}`;
+                return `
+                    <button onclick="setFilterTag('${tag}')" 
+                        class="px-2.5 py-1 rounded-lg transition-all text-xs flex items-center gap-1 font-medium whitespace-nowrap ${
+                            isActive 
+                            ? 'bg-amber-400 text-slate-950 font-semibold shadow-sm' 
+                            : 'bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700/80'
+                        }">
+                        ${label}
+                    </button>
+                `;
+            }).join('');
+        }
+
+        // 繪製顏色過濾選擇器
+        function renderColorFilters() {
+            const container = document.getElementById('colorFilters');
+            let html = `
+                <button onclick="setFilterColor('ALL')" title="全部顏色" 
+                    class="w-5 h-5 rounded-full border ${selectedColor === 'ALL' ? 'ring-2 ring-amber-400 border-white' : 'border-slate-600'} flex items-center justify-center text-[10px] text-slate-300 bg-slate-700">
+                    <i class="fa-solid fa-palette"></i>
+                </button>
+            `;
+
+            Object.keys(COLOR_PALETTE).forEach(colorKey => {
+                const conf = COLOR_PALETTE[colorKey];
+                const isActive = selectedColor === colorKey;
+                html += `
+                    <button onclick="setFilterColor('${colorKey}')" title="${conf.label}" 
+                        style="background-color: ${conf.accent}" 
+                        class="w-5 h-5 rounded-full transition-transform ${isActive ? 'scale-125 ring-2 ring-white shadow-md' : 'opacity-70 hover:opacity-100'}">
+                    </button>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 主要渲染函數
+        function renderNotes() {
+            const container = document.getElementById('notesContainer');
+            const emptyState = document.getElementById('emptyState');
+            
+            // 進行篩選與排序
+            let filtered = notes.filter(note => {
+                // 搜尋關鍵字匹配
+                const matchSearch = searchQuery === '' || 
+                    (note.title && note.title.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                    (note.content && note.content.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                    (note.tag && note.tag.toLowerCase().includes(searchQuery.toLowerCase()));
+
+                // 標籤篩選
+                const matchTag = selectedTag === 'ALL' || note.tag === selectedTag;
+
+                // 顏色篩選
+                const matchColor = selectedColor === 'ALL' || note.color === selectedColor;
+
+                return matchSearch && matchTag && matchColor;
+            });
+
+            // 排序邏輯：置頂優先，接著依選擇排序
+            filtered.sort((a, b) => {
+                if (a.isPinned !== b.isPinned) return b.isPinned ? 1 : -1;
+                
+                if (sortOption === 'newest') {
+                    return new Date(b.createdAt) - new Date(a.createdAt);
+                } else if (sortOption === 'oldest') {
+                    return new Date(a.createdAt) - new Date(b.createdAt);
+                } else if (sortOption === 'title') {
+                    return (a.title || '').localeCompare(b.title || '');
+                }
+                return 0;
+            });
+
+            // 更新總計數量
+            document.getElementById('totalNotesCount').innerText = filtered.length;
+
+            if (filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            } else {
+                emptyState.classList.add('hidden');
+            }
+
+            // 依檢視模式渲染容器類別
+            if (viewMode === 'grid') {
+                container.className = "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 pb-12";
+            } else {
+                container.className = "relative w-full h-full min-h-[800px]";
+            }
+
+            // 構建便利貼 HTML
+            container.innerHTML = filtered.map(note => createNoteCardHTML(note)).join('');
+
+            // 為自由拖拽模式綁定拖動事件處理
+            if (viewMode === 'free') {
+                filtered.forEach(note => {
+                    const cardEl = document.querySelector(`[data-id="${note.id}"]`);
+                    if (cardEl) {
+                        makeDraggable(cardEl, note);
+                    }
+                });
+            }
+        }
+
+        // 產生單一便利貼 HTML 結構
+        function createNoteCardHTML(note) {
+            const colorConf = COLOR_PALETTE[note.color] || COLOR_PALETTE.yellow;
+            const isDarkColor = note.color === 'dark';
+
+            // 位置與樣式調整
+            const positionStyle = viewMode === 'free' 
+                ? `position: absolute; left: ${note.x}px; top: ${note.y}px; z-index: ${note.zIndex || 10}; width: 280px; min-height: 260px;` 
+                : `min-height: 260px;`;
+
+            const dateStr = formatDate(note.updatedAt || note.createdAt);
+
+            return `
+                <div data-id="${note.id}" style="${positionStyle}" 
+                    class="sticky-card ${colorConf.bg} ${colorConf.text} rounded-2xl p-4 flex flex-col justify-between relative group border ${colorConf.border} ${viewMode === 'grid' ? note.tilt : ''}">
+                    
+                    <!-- 擬真上方透明膠帶 (僅限非極簡灰) -->
+                    ${note.color !== 'dark' ? '<div class="tape-effect"></div>' : ''}
+
+                    <!-- 置頂圖釘 -->
+                    ${note.isPinned ? `
+                        <div class="absolute -top-3 right-4 z-20 text-rose-500 drop-shadow-md text-lg transform rotate-12">
+                            <i class="fa-solid fa-thumbtack"></i>
+                        </div>
+                    ` : ''}
+
+                    <!-- 頂部工具欄 (拖拽把手, 置頂, 色彩與操作) -->
+                    <div class="drag-handle flex items-center justify-between pb-2 border-b border-black/10 cursor-move gap-2">
+                        <!-- 分類選單 -->
+                        <div class="relative group/tag">
+                            <select onchange="changeNoteTag('${note.id}', this.value)" 
+                                class="bg-black/10 text-[11px] font-semibold px-2 py-0.5 rounded-md border-0 outline-none cursor-pointer hover:bg-black/20 transition-all ${isDarkColor ? 'text-slate-300' : 'text-slate-800'}">
+                                ${TAG_OPTIONS.map(t => `<option value="${t}" ${note.tag === t ? 'selected' : ''} class="bg-slate-800 text-white">${t}</option>`).join('')}
+                            </select>
+                        </div>
+
+                        <!-- 頂部控制選項 (置頂, 重複, 刪除) -->
+                        <div class="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                            <button onclick="togglePinNote('${note.id}')" title="${note.isPinned ? '取消置頂' : '固定置頂'}" 
+                                class="p-1 rounded hover:bg-black/10 text-xs transition-all ${note.isPinned ? 'text-rose-600 font-bold' : ''}">
+                                <i class="fa-solid fa-thumbtack"></i>
+                            </button>
+                            <button onclick="duplicateNote('${note.id}')" title="複製便利貼" class="p-1 rounded hover:bg-black/10 text-xs transition-all">
+                                <i class="fa-solid fa-copy"></i>
+                            </button>
+                            <button onclick="deleteNote('${note.id}')" title="刪除便利貼" class="p-1 rounded hover:bg-rose-500/20 hover:text-rose-600 text-xs transition-all">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 內容區 (標題與本文輸入) -->
+                    <div class="flex-1 my-2 flex flex-col">
+                        <input type="text" value="${escapeHtml(note.title)}" placeholder="輸入標題..." 
+                            oninput="updateNote('${note.id}', 'title', this.value)" 
+                            class="note-title borderless-input font-bold text-base mb-1.5 w-full ${isDarkColor ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-500/70'}">
+
+                        <textarea placeholder="寫些什麼吧..." 
+                            oninput="updateNote('${note.id}', 'content', this.value)" 
+                            class="borderless-input flex-1 w-full text-sm leading-relaxed ${isDarkColor ? 'text-slate-200 placeholder-slate-500' : 'text-slate-800 placeholder-slate-500/70'}">${escapeHtml(note.content)}</textarea>
+                    </div>
+
+                    <!-- 底部工具欄 (色彩盤與時間戳) -->
+                    <div class="pt-2 border-t border-black/10 flex items-center justify-between text-[11px] opacity-90">
+                        <!-- 色彩變更選單 -->
+                        <div class="flex items-center gap-1">
+                            ${Object.keys(COLOR_PALETTE).map(cKey => `
+                                <button onclick="changeNoteColor('${note.id}', '${cKey}')" 
+                                    style="background-color: ${COLOR_PALETTE[cKey].accent}" 
+                                    title="${COLOR_PALETTE[cKey].label}"
+                                    class="w-3.5 h-3.5 rounded-full transition-transform hover:scale-125 ${note.color === cKey ? 'ring-2 ring-black/50 scale-110' : 'opacity-70'}">
+                                </button>
+                            `).join('')}
+                        </div>
+
+                        <!-- 時間 -->
+                        <span class="text-[10px] opacity-60 font-mono">${dateStr}</span>
+                    </div>
+
+                </div>
+            `;
+        }
+
+        // 拖拽邏輯實現 (支援滑鼠與觸控觸控)
+        function makeDraggable(element, note) {
+            const handle = element.querySelector('.drag-handle');
+            if (!handle) return;
+
+            let isDragging = false;
+            let startX, startY, initialLeft, initialTop;
+
+            const onStart = (e) => {
+                // 如果點擊的是輸入框或按鈕則不觸發拖拽
+                if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'I'].includes(e.target.tagName)) {
+                    return;
+                }
+
+                isDragging = true;
+                element.classList.add('is-dragging');
+
+                // 提升當前便利貼至最上層
+                highestZIndex++;
+                note.zIndex = highestZIndex;
+                element.style.zIndex = highestZIndex;
+                saveNotesToStorage();
+
+                const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+                const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+
+                startX = clientX;
+                startY = clientY;
+                initialLeft = element.offsetLeft;
+                initialTop = element.offsetTop;
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onEnd);
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', onEnd);
+            };
+
+            const onMove = (e) => {
+                if (!isDragging) return;
+                if (e.cancelable) e.preventDefault();
+
+                const clientX = e.type.startsWith('touch') ? e.touches[0].clientX : e.clientX;
+                const clientY = e.type.startsWith('touch') ? e.touches[0].clientY : e.clientY;
+
+                const deltaX = clientX - startX;
+                const deltaY = clientY - startY;
+
+                let newLeft = initialLeft + deltaX;
+                let newTop = initialTop + deltaY;
+
+                // 限制不超出畫布左邊與頂部
+                if (newLeft < 10) newLeft = 10;
+                if (newTop < 10) newTop = 10;
+
+                element.style.left = `${newLeft}px`;
+                element.style.top = `${newTop}px`;
+
+                note.x = newLeft;
+                note.y = newTop;
+            };
+
+            const onEnd = () => {
+                if (isDragging) {
+                    isDragging = false;
+                    element.classList.remove('is-dragging');
+                    saveNotesToStorage();
+
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onEnd);
+                    document.removeEventListener('touchmove', onMove);
+                    document.removeEventListener('touchend', onEnd);
+                }
+            };
+
+            handle.addEventListener('mousedown', onStart);
+            handle.addEventListener('touchstart', onStart, { passive: true });
+        }
+
+        // 切換檢視模式
+        function setViewMode(mode) {
+            viewMode = mode;
+            localStorage.setItem(VIEW_MODE_KEY, mode);
+            updateViewModeUI();
+            renderNotes();
+            showToast(`已切換為 ${mode === 'grid' ? '網格整列' : '自由擺放'} 模式`, 'info');
+        }
+
+        function updateViewModeUI() {
+            const gridBtn = document.getElementById('viewGridBtn');
+            const freeBtn = document.getElementById('viewFreeBtn');
+
+            if (viewMode === 'grid') {
+                gridBtn.className = "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-semibold bg-amber-400 text-slate-950 shadow-sm";
+                freeBtn.className = "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-medium text-slate-400 hover:text-slate-200";
+            } else {
+                freeBtn.className = "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-semibold bg-amber-400 text-slate-950 shadow-sm";
+                gridBtn.className = "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 font-medium text-slate-400 hover:text-slate-200";
+            }
+        }
+
+        // 搜尋處理
+        function handleSearch() {
+            searchQuery = document.getElementById('searchInput').value.trim();
+            const clearBtn = document.getElementById('clearSearchBtn');
+            if (searchQuery) {
+                clearBtn.classList.remove('hidden');
+            } else {
+                clearBtn.classList.add('hidden');
+            }
+            renderNotes();
+        }
+
+        function clearSearch() {
+            document.getElementById('searchInput').value = '';
+            searchQuery = '';
+            document.getElementById('clearSearchBtn').classList.add('hidden');
+            renderNotes();
+        }
+
+        // 標籤篩選切換
+        function setFilterTag(tag) {
+            selectedTag = tag;
+            renderTagFilters();
+            renderNotes();
+        }
+
+        // 顏色篩選切換
+        function setFilterColor(color) {
+            selectedColor = color;
+            renderColorFilters();
+            renderNotes();
+        }
+
+        // 排序切換
+        function handleSortChange() {
+            sortOption = document.getElementById('sortSelect').value;
+            renderNotes();
+        }
+
+        // 匯出 JSON 資料
+        function exportData() {
+            if (notes.length === 0) {
+                showToast('目前沒有資料可匯出', 'error');
+                return;
+            }
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(notes, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `StickyNotes_Backup_${new Date().toISOString().slice(0,10)}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+
+            showToast('備份 JSON 已成功匯出！', 'success');
+        }
+
+        // 觸發檔案選擇器匯入
+        function triggerImport() {
+            document.getElementById('importInput').click();
+        }
+
+        // 匯入 JSON 資料
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedNotes = JSON.parse(e.target.result);
+                    if (Array.isArray(importedNotes)) {
+                        notes = importedNotes;
+                        saveNotesToStorage();
+                        renderNotes();
+                        showToast(`成功匯入 ${notes.length} 則便利貼！`, 'success');
+                    } else {
+                        showToast('備份檔案格式不正確', 'error');
+                    }
+                } catch (err) {
+                    showToast('解析 JSON 檔案失敗', 'error');
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = ''; // 重置
+        }
+
+        // 清空全部便利貼確認
+        function confirmClearAll() {
+            if (notes.length === 0) {
+                showToast('畫面上已經沒有便利貼了', 'info');
+                return;
+            }
+
+            openConfirmModal('確定要清空看板上的所有便利貼嗎？', () => {
+                notes = [];
+                saveNotesToStorage();
+                renderNotes();
+                showToast('已清空所有便利貼', 'info');
+            });
+        }
+
+        // 自訂 Modal 模組
+        function openConfirmModal(msg, callback) {
+            document.getElementById('modalMessage').innerText = msg;
+            activeConfirmCallback = callback;
+            document.getElementById('confirmModal').classList.remove('hidden');
+        }
+
+        function closeConfirmModal(confirmed) {
+            document.getElementById('confirmModal').classList.add('hidden');
+            if (confirmed && typeof activeConfirmCallback === 'function') {
+                activeConfirmCallback();
+            }
+            activeConfirmCallback = null;
+        }
+
+        // Toast 提示訊息
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+
+            const bgColors = {
+                success: 'bg-emerald-600 text-white',
+                error: 'bg-rose-600 text-white',
+                info: 'bg-slate-800 text-slate-100 border border-slate-700'
+            };
+
+            const icons = {
+                success: 'fa-circle-check text-emerald-300',
+                error: 'fa-circle-xmark text-rose-300',
+                info: 'fa-circle-info text-amber-400'
+            };
+
+            toast.className = `flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-medium ${bgColors[type]} transition-all transform translate-y-4 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `<i class="fa-solid ${icons[type]} text-sm"></i> <span>${escapeHtml(message)}</span>`;
+
+            container.appendChild(toast);
+
+            // 淡入動畫
+            setTimeout(() => {
+                toast.classList.remove('translate-y-4', 'opacity-0');
+            }, 10);
+
+            // 自動消除
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // 工具函數：時間格式化
+        function formatDate(isoString) {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            const month = (d.getMonth() + 1).toString().padStart(2, '0');
+            const day = d.getDate().toString().padStart(2, '0');
+            const hours = d.getHours().toString().padStart(2, '0');
+            const minutes = d.getMinutes().toString().padStart(2, '0');
+            return `${month}/${day} ${hours}:${minutes}`;
+        }
+
+        // 工具函數：HTML 轉義（防止 XSS）
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // 視窗大小調整事件
+        function setupWindowResize() {
+            window.addEventListener('resize', () => {
+                // 如果在自由模式且螢幕過小，確保便利貼不會跑出邊界
+                if (viewMode === 'free') {
+                    const maxX = window.innerWidth - 300;
+                    notes.forEach(note => {
+                        if (note.x > maxX && maxX > 50) {
+                            note.x = maxX;
+                        }
+                    });
+                    renderNotes();
+                }
+            });
+        }
+    </script>
+</body>
+</html>
